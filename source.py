@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.interpolate import make_interp_spline
 import tkinter as tk
-from tkinter import Tk, Button, Label, messagebox, Frame
+from tkinter import Tk, Button, Label, messagebox, Frame, Radiobutton, StringVar
 import pygame
 import random
 
-#  CONFIGURARE SI VARIABILE GLOBALE 
+#  CONFIGURARE SI VARIABILE GLOBALE
 X_DATE = None
 Y_DATE = None
 radacina = None # Fereastra principala
@@ -18,7 +18,8 @@ SNAKE_W, SNAKE_H = 600, 600
 GRID_W, GRID_H = SNAKE_W // SNAKE_BLOCK, SNAKE_H // SNAKE_BLOCK     # o tabla mai mic pentru PSO
 DIRS = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # Sus, Jos, Stanga, Dreapta
 
-#  CLASA PSO (LOGICA MATEMATICA) 
+
+#  CLASA PSO (LOGICA MATEMATICA)
 class OptimizarePSO:
     def __init__(self, dim, limite, nr_particule, nr_iteratii, functie_cost, mod='gbest'):
         self.dim = dim
@@ -86,7 +87,7 @@ class OptimizarePSO:
         self.iter_curenta += 1
         return True
 
-#  LOGICA SPLINE 
+#  LOGICA SPLINE
 def cost_spline(y_interne, x_control):
     global X_DATE, Y_DATE
     y0 = Y_DATE[0]
@@ -105,7 +106,7 @@ def cost_spline(y_interne, x_control):
 
 def start_animatie_spline(mod_pso):
     global X_DATE, Y_DATE
-    
+
     # Configurare PSO
     nr_interne = 5
     x_ctrl = np.linspace(0.1, 0.9, nr_interne)
@@ -120,7 +121,7 @@ def start_animatie_spline(mod_pso):
     # Configurare Grafic Matplotlib
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(f"Optimizare PSO Spline - Mod: {mod_pso}")
-    
+
     # Grafic 1: Particule
     ax1.set_title("Cautare Particule")
     ax1.plot(X_DATE, Y_DATE, 'co', label='Date Reale')
@@ -132,7 +133,7 @@ def start_animatie_spline(mod_pso):
     ax2.set_title("Rezultat Spline")
     ax2.plot(X_DATE, Y_DATE, 'co', markersize=8)
     linie_rez, = ax2.plot([], [], 'r-', lw=3)
-    
+
     txt_info = ax2.text(0.05, 0.9, "", transform=ax2.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
     def update(frame):
@@ -142,7 +143,7 @@ def start_animatie_spline(mod_pso):
         # Desenare particule
         for i, linie in enumerate(linii_part):
             linie.set_data(x_ctrl, pso.pozitii[i])
-        
+
         # Desenare best
         gb = pso.g_best
         x_g = np.r_[X_DATE.min(), x_ctrl, X_DATE.max()]
@@ -159,7 +160,7 @@ def start_animatie_spline(mod_pso):
         txt_info.set_text(f"Iter: {pso.iter_curenta}\nEroare: {pso.scor_g:.9f}")
         return lines_part + [linie_best, linie_rez, txt_info]
 
-    lines_part = linii_part 
+    lines_part = linii_part
     anim = FuncAnimation(fig, update, interval=50, repeat=False)
     plt.show()
 
@@ -171,7 +172,7 @@ class SnakeEngine:
     def reset(self):
         self.snake = [(GRID_W // 2, GRID_H // 2)]
         self.food = self.spawn_food()
-        self.direction = 3
+        self.direction = 3  # Start spre Dreapta
         self.score = 0
         self.dead = False
 
@@ -181,18 +182,18 @@ class SnakeEngine:
             if (x, y) not in self.snake: return (x, y)
 
     def simuleaza_pasi(self, moves_idx):
-        # Functie folosita de PSO pentru a testa o traiectorie
-        # Returneaza COSTUL (mai mic e mai bine)
-
-        # copiere stare
+        """ Functie folosita de PSO pentru a testa o traiectorie imaginara.
+            Returneaza COSTUL (mai mic e mai bine). """
         sim_snake = list(self.snake)
         sim_head = sim_snake[0]
         sim_dir = self.direction
 
+        # Distanta Manhattan initiala pana la mancare
         dist_start = abs(sim_head[0] - self.food[0]) + abs(sim_head[1] - self.food[1])
         min_dist = dist_start
 
         for move in moves_idx:
+            # Prevenire intoarcere 180 grade
             if (sim_dir == 0 and move == 1) or (sim_dir == 1 and move == 0) or (sim_dir == 2 and move == 3) or (sim_dir == 3 and move == 2):
                 move = sim_dir
             sim_dir = move
@@ -200,29 +201,32 @@ class SnakeEngine:
             dx, dy = DIRS[move]
             nx, ny = sim_head[0] + dx, sim_head[1] + dy
 
+            # Verificare Coliziune (Moarte in simulare)
             if nx < 0 or nx >= GRID_W or ny < 0 or ny >= GRID_H or (nx, ny) in sim_snake[:-1]:
-                return 100  # Cost maxim (Moarte)
+                return 100  # Cost penalizare
 
             sim_snake.insert(0, (nx, ny))
             sim_head = (nx, ny)
 
+            # Calcul distanța minima atinsa in acest plan
             dist = abs(nx - self.food[0]) + abs(ny - self.food[1])
             if dist < min_dist: min_dist = dist
 
             if (nx, ny) == self.food:
-                return -10  # Cost minim (Recompensa)
+                return -10  # Recompensa (Scor negativ)
             else:
                 sim_snake.pop()
 
-        # Costul este distanta ramasa (cat mai mica)
-        return min_dist
+        return min_dist # Daca n-a murit, costul este distanta ramasa
 
     def executa_mutare(self, move_idx):
-        if (self.direction == 0 and move_idx == 1) or (self.direction == 1 and move_idx == 0) or (self.direction == 2 and move_idx == 3) or (self.direction == 3 and move_idx == 2):
+        """ Aplica mutarea decisa de PSO în jocul REAL. """
+        if (self.direction == 0 and move_idx == 1) or (self.direction == 1 and move_idx == 0) or \
+           (self.direction == 2 and move_idx == 3) or (self.direction == 3 and move_idx == 2):
             move_idx = self.direction
         self.direction = move_idx
 
-        dx, dy = DIRS[move_idx]
+        dx, dy = DIRS[self.direction]
         nx, ny = self.snake[0][0] + dx, self.snake[0][1] + dy
 
         if nx < 0 or nx >= GRID_W or ny < 0 or ny >= GRID_H or (nx, ny) in self.snake[:-1]:
@@ -236,19 +240,29 @@ class SnakeEngine:
         else:
             self.snake.pop()
 
-def ruleaza_snake_cu_pso():
+
+def ruleaza_snake_ai(tip_mod):
     pygame.init()
     screen = pygame.display.set_mode((SNAKE_W, SNAKE_H))
-    pygame.display.set_caption("Snake AI controlat de OptimizarePSO")
+    pygame.display.set_caption(f"Snake AI - PSO: {tip_mod.upper()}")
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont('Arial', 20)
+
+    font = pygame.font.SysFont('Arial', 22)
 
     game = SnakeEngine()
 
-    # Parametri PSO Snake
+    plt.ion()
+    fig_p, ax_p = plt.subplots(figsize=(5, 5))
+    ax_p.set_title(f"Spatiul Particulelor \nMod: {tip_mod}")
+    ax_p.set_xlim(-0.5, 4.5);
+    ax_p.set_ylim(-0.5, 4.5)
+    scat = ax_p.scatter([], [], c='blue', alpha=0.5, label='Particule')
+    gbest_dot = ax_p.scatter([], [], c='red', s=100, marker='X', label='Lider')
+    ax_p.legend()
+
     ORIZONT = 12
     NR_PART = 25
-    ITERATII_PER_FRAME = 15
+    ITERATII = 15
 
     running = True
     while running:
@@ -257,55 +271,58 @@ def ruleaza_snake_cu_pso():
 
         if game.dead:
             game.reset()
-            pygame.time.delay(500)
+            pygame.time.delay(300)
             continue
 
-
-        # functia de cost curenta (care depinde de starea jocului)
-        def snake_cost_wrapper(vector_pozitie):
-            moves = np.clip(vector_pozitie, 0, 3.99).astype(int)
+        # INTEGRARE PSO - transforma pozitiile particulelor in mutari valide (0-3)
+        def snake_cost_wrapper(p):
+            moves = np.clip(p, 0, 3.99).astype(int)
             return game.simuleaza_pasi(moves)
 
-        # Initializare PSO la fiecare frame (pentru a reactiona la noul mediu)
-        # Limitele sunt 0 -> 4 pentru fiecare pas din orizont
-        limite_snake = [(0, 4)] * ORIZONT
+        if game.score > 20:
+            ORIZONT = 20
+            ITERATII = 25
 
-        pso_snake = OptimizarePSO(
-            dim=ORIZONT,
-            limite=limite_snake,
-            nr_particule=NR_PART,
-            nr_iteratii=ITERATII_PER_FRAME,
-            functie_cost=snake_cost_wrapper,
-            mod='gbest'
-        )
+        limite = [(0, 4)] * ORIZONT
+        pso = OptimizarePSO(ORIZONT, limite, NR_PART, ITERATII, snake_cost_wrapper, mod=tip_mod)
 
-        for _ in range(ITERATII_PER_FRAME):
-            pso_snake.pas()
+        for _ in range(ITERATII):
+            pso.pas()
 
-        # cea mai buna solutie (GBest)
-        best_plan = np.clip(pso_snake.g_best, 0, 3.99).astype(int)
-        next_move = best_plan[0]  #  primul pas din plan (Receding Horizon)
+        scat.set_offsets(pso.pozitii[:, :2])
+        gbest_dot.set_offsets([pso.g_best[:2]])
+        fig_p.canvas.draw()
+        fig_p.canvas.flush_events()
 
-        game.executa_mutare(next_move)
+        # Este luata prima mutare din secventa optima gasita si este executata in jocul real
+        best_move = np.clip(pso.g_best[0], 0, 3.99).astype(int)
+        game.executa_mutare(best_move)
 
-        screen.fill((0, 0, 0))
+        screen.fill((20, 20, 20))
 
-        fx, fy = game.food
-        pygame.draw.rect(screen, (255, 0, 0), (fx * SNAKE_BLOCK, fy * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK))
+        pygame.draw.rect(screen, (255, 50, 50),(game.food[0] * SNAKE_BLOCK, game.food[1] * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK))
 
-        for bx, by in game.snake:
-            pygame.draw.rect(screen, (0, 255, 0), (bx * SNAKE_BLOCK, by * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK))
-            pygame.draw.rect(screen, (255, 255, 255), (bx * SNAKE_BLOCK, by * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK), 1)
+        for p in game.snake:
+            pygame.draw.rect(screen, (50, 255, 50),(p[0] * SNAKE_BLOCK, p[1] * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK))
+            pygame.draw.rect(screen, (255, 255, 255),(p[0] * SNAKE_BLOCK, p[1] * SNAKE_BLOCK, SNAKE_BLOCK, SNAKE_BLOCK), 1)
 
-        score_surf = font.render(f"Scor: {game.score} | PSO Cost: {pso_snake.scor_g:.1f}", True, (255, 255, 255))
-        screen.blit(score_surf, (10, 10))
+
+        info_text = f"Scor: {game.score} | Cost PSO (Fitness): {pso.scor_g:.2f}"
+        text_surface = font.render(info_text, True, (255, 255, 255))
+
+        bg_rect = pygame.Rect(5, 5, text_surface.get_width() + 10, text_surface.get_height() + 5)
+        pygame.draw.rect(screen, (50, 50, 50), bg_rect)
+
+        screen.blit(text_surface, (10, 8))
 
         pygame.display.flip()
-        clock.tick(15)  # FPS
+        clock.tick(15)
 
+    plt.close(fig_p)
+    plt.ioff()
     pygame.quit()
 
-#  INTERFATA GRAFICA 
+#  INTERFATA GRAFICA
 def curata_fereastra():
     """Sterge tot continutul din fereastra principala"""
     for widget in radacina.winfo_children():
@@ -314,7 +331,7 @@ def curata_fereastra():
 def meniu_principal():
     curata_fereastra()
     radacina.title("Proiect PSO - Meniu Principal")
-    
+
     lbl = Label(radacina, text="Selecteaza Modulul", font=("Arial", 16, "bold"), bg="#2c3e50", fg="white")
     lbl.pack(pady=40)
 
@@ -327,12 +344,12 @@ def meniu_principal():
     btn_exit = Button(radacina, text="Iesire", width=15, bg="#c0392b", fg="white", command=radacina.quit)
     btn_exit.pack(pady=30)
 
-#  MENIU 1: SPLINE 
+#  MENIU 1: SPLINE
 def meniu_spline_setup():
     curata_fereastra()
     radacina.title("Configurare Date Spline")
     Label(radacina, text="Introdu puncte (x y) - unul pe linie:", bg="#2c3e50", fg="white").pack(pady=5)
-    
+
     txt_input = tk.Text(radacina, height=10, width=40)
     txt_input.pack(pady=5)
     txt_input.insert(tk.END, "0.0 0.0\n0.1 0.8\n0.2 0.9\n0.35 0.7\n0.5 0.0\n0.65 -0.7\n0.8 -0.9\n0.9 -0.75\n1.0 0.0") #date default
@@ -347,15 +364,15 @@ def meniu_spline_setup():
                 vals = list(map(float, linie.split()))
                 xl.append(vals[0])
                 yl.append(vals[1])
-            
+
             # Sortare
             perechi = sorted(zip(xl, yl))
             X_DATE = np.array([p[0] for p in perechi])
             Y_DATE = np.array([p[1] for p in perechi])
-            
+
             # Porneste animatia
             start_animatie_spline(mod)
-            
+
         except ValueError:
             messagebox.showerror("Eroare", "Format date invalid!")
 
@@ -369,21 +386,28 @@ def meniu_spline_setup():
 #  MENIU 2: SNAKE
 def meniu_snake_setup():
     curata_fereastra()
-    radacina.title("Snake AI Config")
-    Label(radacina, text="Modul Snake AI cu PSO", font=("Arial", 16, "bold"), bg="#2c3e50", fg="white").pack(pady=30)
+    radacina.title("Configurare Snake PSO")
 
-    btn_start = Button(radacina, text="Start Joc", width=20, height=2, bg="#2ecc71", fg="white",
-                       font=("Arial", 12, "bold"), command=ruleaza_snake_cu_pso)
-    btn_start.pack(pady=30)
+    Label(radacina, text="Alege Topologia PSO:", font=("Arial", 14), bg="#2c3e50", fg="white").pack(pady=20)
 
-    Button(radacina, text="Inapoi", command=meniu_principal).pack(pady=20)
+    v = StringVar(radacina, "gbest")
 
-#  MAIN 
+    rb_frame = Frame(radacina, bg="#2c3e50")
+    rb_frame.pack(pady=10)
+
+    Radiobutton(rb_frame, text="Global Best", variable=v, value="gbest",bg="#2c3e50", fg="white", selectcolor="#34495e", font=("Arial", 12)).pack(anchor="w")
+    Radiobutton(rb_frame, text="Local Best", variable=v, value="lbest",bg="#2c3e50", fg="white", selectcolor="#34495e", font=("Arial", 12)).pack(anchor="w")
+
+    Button(radacina, text="Start Joc", bg="#2ecc71", fg="white", width=20, height=2,command=lambda: ruleaza_snake_ai(v.get())).pack(pady=20)
+
+    Button(radacina, text="Inapoi la Meniu", command=meniu_principal).pack(pady=10)
+
+#  MAIN
 if __name__ == "__main__":
     radacina = Tk()
     radacina.geometry("500x500")
     radacina.configure(bg="#2c3e50")
-    
+
     # Pornire interfata
-    meniu_principal() 
+    meniu_principal()
     radacina.mainloop()
