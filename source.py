@@ -248,8 +248,7 @@ class SnakeEngine:
 
     def executa_mutare(self, move_idx):
         """ Aplica mutarea decisa de PSO in jocul REAL. """
-        if (self.direction == 0 and move_idx == 1) or (self.direction == 1 and move_idx == 0) or \
-           (self.direction == 2 and move_idx == 3) or (self.direction == 3 and move_idx == 2):
+        if (self.direction == 0 and move_idx == 1) or (self.direction == 1 and move_idx == 0) or (self.direction == 2 and move_idx == 3) or (self.direction == 3 and move_idx == 2):
             move_idx = self.direction
         self.direction = move_idx
 
@@ -301,7 +300,7 @@ def ruleaza_snake_ai(tip_mod):
             pygame.time.delay(300)
             continue
 
-        # INTEGRARE PSO - transforma pozitiile particulelor in mutari valide (0-3)
+        # INTEGRARE PSO - transforma pozitiile particulelor din float in mutari valide (0-3)
         def snake_cost_wrapper(p):
             moves = np.clip(p, 0, 3.99).astype(int)
             return game.simuleaza_pasi(moves)
