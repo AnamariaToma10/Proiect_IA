@@ -7,7 +7,7 @@ from tkinter import Tk, Button, Label, messagebox, Frame, Radiobutton, StringVar
 import pygame
 import random
 
-#  CONFIGURARE SI VARIABILE GLOBALE
+#  CONFIGURARE SI VARIABILE GLOBALE SPLINE
 X_DATE = None
 Y_DATE = None
 radacina = None # Fereastra principala
@@ -19,9 +19,24 @@ GRID_W, GRID_H = SNAKE_W // SNAKE_BLOCK, SNAKE_H // SNAKE_BLOCK     # o tabla ma
 DIRS = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # Sus, Jos, Stanga, Dreapta
 
 
-#  CLASA PSO (LOGICA MATEMATICA)
+#  CLASA PSO (LOGICA MATEMATICA) - ALGORITMUL PARTICLE SWARM OPTIMIZATION
 class OptimizarePSO:
+    """
+    Implementare clasica a algoritmului Particle Swarm Optimization (PSO)
+    cu suport pentru topologii gbest (global best) si lbest (local best).
+    """
     def __init__(self, dim, limite, nr_particule, nr_iteratii, functie_cost, mod='gbest'):
+        """
+        Initializare PSO.
+        
+        Parametri:
+            dim          : dimensiunea spatiului de cautare (numar de variabile)
+            limite       : lista/tuplu de perechi (min, max) pentru fiecare dimensiune
+            nr_particule : numarul de particule din roi
+            nr_iteratii  : numarul maxim de iteratii
+            functie_cost : functia obiectiv de minimizat
+            mod          : 'gbest' pentru topologie globala, 'lbest' pentru topologie locala (inel)
+        """
         self.dim = dim
         self.limite = np.array(limite)
         self.nr_part = nr_particule
@@ -30,34 +45,40 @@ class OptimizarePSO:
         self.mod = mod
         self.iter_curenta = 0
 
-        # initializare
+        # initializare pozitii si viteze ale particulelor
         jos = self.limite[:,0]
         sus = self.limite[:,1]
         self.pozitii = np.random.uniform(jos, sus, (nr_particule, dim))
         self.viteze = np.random.uniform(-0.1, 0.1, (nr_particule, dim))
 
+        # Cele mai bune pozitii personale si scorurile asociate
         self.p_best = self.pozitii.copy()
         self.scor_p = np.array([self.cost(p) for p in self.pozitii])
 
+        # Cel mai bun global (gbest)
         idx_gbest = np.argmin(self.scor_p)
         self.g_best = self.p_best[idx_gbest].copy()
         self.scor_g = float(self.scor_p[idx_gbest])
 
     def pas(self):
+        """
+        Executa o iteratie a algoritmului PSO.
+        Returneaza False daca s-a atins numarul maxim de iteratii.
+        """
         if self.iter_curenta >= self.max_iter:
             return False
 
-        # inertie adaptiva
+        # Greutate inertiala adaptiva (scade liniar de la 0.9 la 0.4)
         w = 0.9 - 0.5 * (self.iter_curenta / self.max_iter)
 
         for i in range(self.nr_part):
-            r1 = np.random.rand(self.dim)
-            r2 = np.random.rand(self.dim)
+            r1 = np.random.rand(self.dim) #componenta cognitiva
+            r2 = np.random.rand(self.dim) #componenta sociala
 
             # selectie sociala
             if self.mod == 'gbest':
                 social = self.g_best
-            else:  # lbest
+            else:  # lbest – topologie inel
                 stanga = (i - 1) % self.nr_part
                 dreapta = (i + 1) % self.nr_part
                 vecini = [stanga, i, dreapta]
@@ -69,9 +90,11 @@ class OptimizarePSO:
             # actualizare viteza si pozitie
             self.viteze[i] = (w * self.viteze[i] +2 * r1 * (cognitiv - self.pozitii[i]) +  2 * r2 * (social - self.pozitii[i]))
 
+            # Limitare viteza pentru stabilitate
             lim_v = 0.2 * (self.limite[:,1] - self.limite[:,0])
             self.viteze[i] = np.clip(self.viteze[i], -lim_v, lim_v)
 
+            # Actualizare pozitie si restrictionare in limite
             self.pozitii[i] += self.viteze[i]
             self.pozitii[i] = np.clip(self.pozitii[i], self.limite[:,0], self.limite[:,1])
 
@@ -89,17 +112,21 @@ class OptimizarePSO:
 
 #  LOGICA SPLINE
 def cost_spline(y_interne, x_control):
+    """
+    Functie de cost pentru optimizarea punctelor interne ale unui spline cubic.
+    Minimizeaza eroarea patratica intre spline si datele originale.
+    """
     global X_DATE, Y_DATE
-    y0 = Y_DATE[0]
-    yN = Y_DATE[-1]
+    y0 = Y_DATE[0]# Valoare la capatul stang (fix)
+    yN = Y_DATE[-1]# Valoare la capatul drept (fix)
     # construim setul complet de puncte
     x_full = np.r_[X_DATE.min(), x_control, X_DATE.max()]
     y_full = np.r_[y0, y_interne, yN]
 
     try:
-        spline = make_interp_spline(x_full, y_full, k=3)
-        pred = spline(X_DATE)
-        eroare = np.sum((pred - Y_DATE)**2)
+        spline = make_interp_spline(x_full, y_full, k=3)# Spline cubic
+        pred = spline(X_DATE)# Predictii pe datele originale
+        eroare = np.sum((pred - Y_DATE)**2)# Eroare patratica totala
         return eroare
     except:
         return 1e9
@@ -108,13 +135,13 @@ def start_animatie_spline(mod_pso):
     global X_DATE, Y_DATE
 
     # Configurare PSO
-    nr_interne = 5
-    x_ctrl = np.linspace(0.1, 0.9, nr_interne)
+    nr_interne = 5# Numar puncte interne de optimizat
+    x_ctrl = np.linspace(0.1, 0.9, nr_interne)# Pozitii fixe ale punctelor interne pe axa x
     ymin, ymax = Y_DATE.min(), Y_DATE.max()
     marja = max(0.5, 0.2 * abs(ymax - ymin))
     limite = [(ymin - marja, ymax + marja)] * nr_interne
 
-    func_wrapper = lambda y: cost_spline(y, x_ctrl)
+    func_wrapper = lambda y: cost_spline(y, x_ctrl)# Wrapper pentru functia de cost
 
     pso = OptimizarePSO(dim=nr_interne, limite=limite, nr_particule=30, nr_iteratii=120, functie_cost=func_wrapper, mod=mod_pso)
 
@@ -150,7 +177,7 @@ def start_animatie_spline(mod_pso):
         y_g = np.r_[Y_DATE[0], gb, Y_DATE[-1]]
         linie_best.set_data(x_g, y_g)
 
-        # Spline fin
+        # Spline final
         try:
             spl = make_interp_spline(x_g, y_g, k=3)
             xx = np.linspace(X_DATE.min(), X_DATE.max(), 300)
@@ -208,7 +235,7 @@ class SnakeEngine:
             sim_snake.insert(0, (nx, ny))
             sim_head = (nx, ny)
 
-            # Calcul distanța minima atinsa in acest plan
+            # Calcul distanta minima atinsa in acest plan
             dist = abs(nx - self.food[0]) + abs(ny - self.food[1])
             if dist < min_dist: min_dist = dist
 
@@ -220,7 +247,7 @@ class SnakeEngine:
         return min_dist # Daca n-a murit, costul este distanta ramasa
 
     def executa_mutare(self, move_idx):
-        """ Aplica mutarea decisa de PSO în jocul REAL. """
+        """ Aplica mutarea decisa de PSO in jocul REAL. """
         if (self.direction == 0 and move_idx == 1) or (self.direction == 1 and move_idx == 0) or \
            (self.direction == 2 and move_idx == 3) or (self.direction == 3 and move_idx == 2):
             move_idx = self.direction
@@ -397,9 +424,7 @@ def meniu_snake_setup():
 
     Radiobutton(rb_frame, text="Global Best", variable=v, value="gbest",bg="#2c3e50", fg="white", selectcolor="#34495e", font=("Arial", 12)).pack(anchor="w")
     Radiobutton(rb_frame, text="Local Best", variable=v, value="lbest",bg="#2c3e50", fg="white", selectcolor="#34495e", font=("Arial", 12)).pack(anchor="w")
-
     Button(radacina, text="Start Joc", bg="#2ecc71", fg="white", width=20, height=2,command=lambda: ruleaza_snake_ai(v.get())).pack(pady=20)
-
     Button(radacina, text="Inapoi la Meniu", command=meniu_principal).pack(pady=10)
 
 #  MAIN
